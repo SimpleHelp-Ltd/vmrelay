@@ -1291,6 +1291,48 @@ func TestParseVMBridgeAddress(t *testing.T) {
 	}
 }
 
+func TestMappingControlPathUsesShortRuntimeDir(t *testing.T) {
+	stateDir := filepath.Join("/Users", strings.Repeat("longname", 16), "Library", "Application Support", "vmrelay")
+	got := mappingControlPath(stateDir, "zinc", "map-id")
+	if strings.Contains(got, stateDir) {
+		t.Fatalf("mapping control path should not live under long state dir: %s", got)
+	}
+	if !strings.Contains(filepath.Base(got), "mapping-") {
+		t.Fatalf("mapping control path should keep mapping prefix, got %s", got)
+	}
+	if len(got) >= 100 {
+		t.Fatalf("mapping control path is too long for portable SSH mux sockets: len=%d path=%s", len(got), got)
+	}
+}
+
+func TestMappingActiveRecognizesLegacyControlPath(t *testing.T) {
+	stateDir := t.TempDir()
+	legacy := legacyMappingControlPath(stateDir, "iron", "map1")
+	if err := os.WriteFile(legacy, []byte{}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !mappingActive(stateDir, "iron", "map1") {
+		t.Fatal("mappingActive should recognize legacy state-dir control sockets")
+	}
+	if got, ok := existingMappingControlPath(stateDir, "iron", "map1"); !ok || got != legacy {
+		t.Fatalf("existingMappingControlPath = %q, %v; want legacy %q", got, ok, legacy)
+	}
+}
+
+func TestErrorSummarySkipsMappingReadiness(t *testing.T) {
+	text := strings.Join([]string{
+		"Mapping start failed: exit status 1",
+		"VM service mapping host setup: ready (systemd-socket-proxyd)",
+		"VMRELAY_BRIDGE\t192.168.122.1",
+		"Failed to listen on 192.168.122.1:8081: Address already in use",
+	}, "\n")
+	got := errorSummary(text)
+	want := "Mapping start failed: exit status 1: Failed to listen on 192.168.122.1:8081: Address already in use"
+	if got != want {
+		t.Fatalf("errorSummary = %q, want %q", got, want)
+	}
+}
+
 func TestCreateVMFormAndValidation(t *testing.T) {
 	m := Model{
 		config:           Config{Theme: "Classic"},

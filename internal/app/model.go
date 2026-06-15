@@ -2900,6 +2900,12 @@ func isUsefulErrorLine(line string) bool {
 	if strings.HasPrefix(lower, "warning") {
 		return false
 	}
+	if strings.HasPrefix(line, "VMRELAY_") {
+		return false
+	}
+	if strings.HasPrefix(line, "VM service mapping host setup: ready ") {
+		return false
+	}
 	return true
 }
 
@@ -6372,7 +6378,11 @@ func startPortMapping(h Host, mapping PortMapping, stateDir string) (string, err
 		bindHost = addr
 	}
 	ctl := mappingControlPath(stateDir, h.Name, mapping.ID)
+	if err := os.MkdirAll(filepath.Dir(ctl), 0o700); err != nil {
+		return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut)), err
+	}
 	_ = os.Remove(ctl)
+	_ = os.Remove(legacyMappingControlPath(stateDir, h.Name, mapping.ID))
 	tunnelPort := mappingRelayPort(h.Name, mapping.ID)
 	args := []string{
 		"-f", "-N", "-M", "-S", ctl,
@@ -6383,13 +6393,24 @@ func startPortMapping(h Host, mapping PortMapping, stateDir string) (string, err
 		h.Target,
 	}
 	if out, err := runCommand(20*time.Second, "ssh", args...); err != nil {
+		_ = os.Remove(ctl)
+		_ = os.Remove(filepath.Dir(ctl))
+		detail := firstUsefulErrorLine(out)
+		if detail != "" {
+			return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut) + "\n" + strings.TrimSpace(out)), fmt.Errorf("failed to start SSH VM service tunnel: %w: %s", err, detail)
+		}
 		return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut) + "\n" + strings.TrimSpace(out)), fmt.Errorf("failed to start SSH VM service tunnel: %w", err)
 	}
 	relayOut, relayErr := startRemoteMappingRelay(h, mapping, bindHost, tunnelPort)
 	if relayErr != nil {
 		_, _ = runCommand(10*time.Second, "ssh", "-S", ctl, "-O", "exit", h.Target)
 		_ = os.Remove(ctl)
-		return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut) + "\n" + strings.TrimSpace(relayOut)), relayErr
+		_ = os.Remove(filepath.Dir(ctl))
+		detail := firstUsefulErrorLine(relayOut)
+		if detail != "" {
+			return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut) + "\n" + strings.TrimSpace(relayOut)), fmt.Errorf("failed to start VM service mapping relay: %w: %s", relayErr, detail)
+		}
+		return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut) + "\n" + strings.TrimSpace(relayOut)), fmt.Errorf("failed to start VM service mapping relay: %w", relayErr)
 	}
 	writeMappingEndpointHost(stateDir, h.Name, mapping.ID, bindHost)
 	return fmt.Sprintf("Started %s: VMs use %s:%d -> this machine 127.0.0.1:%d.", mapping.Name, bindHost, mapping.RemotePort, mapping.LocalPort), nil
@@ -6496,17 +6517,19 @@ printf 'VMRELAY_RELAY	%%s	%%s:%%s	127.0.0.1:%%s\n' "$relay_tool" "$bridge_addr" 
 }
 
 func stopPortMapping(h Host, mapping PortMapping, stateDir string) (string, error) {
-	ctl := mappingControlPath(stateDir, h.Name, mapping.ID)
+	ctl, hasCtl := existingMappingControlPath(stateDir, h.Name, mapping.ID)
 	relayOut, relayErr := stopRemoteMappingRelay(h, mapping)
-	_, ctlErr := os.Stat(ctl)
-	if errors.Is(ctlErr, os.ErrNotExist) {
+	if !hasCtl {
 		if relayErr != nil {
 			return strings.TrimSpace(relayOut), relayErr
 		}
 		return "Mapping " + mapping.Name + " is not running.", nil
 	}
 	out, err := runCommand(10*time.Second, "ssh", "-S", ctl, "-O", "exit", h.Target)
-	_ = os.Remove(ctl)
+	for _, path := range mappingControlPaths(stateDir, h.Name, mapping.ID) {
+		_ = os.Remove(path)
+	}
+	_ = os.Remove(filepath.Dir(mappingControlPath(stateDir, h.Name, mapping.ID)))
 	if err != nil {
 		return strings.TrimSpace(strings.TrimSpace(relayOut) + "\n" + strings.TrimSpace(out)), err
 	}
@@ -6582,8 +6605,8 @@ func parseVMBridgeAddress(out string) string {
 }
 
 func mappingActive(stateDir, host, id string) bool {
-	_, err := os.Stat(mappingControlPath(stateDir, host, id))
-	return err == nil
+	_, ok := existingMappingControlPath(stateDir, host, id)
+	return ok
 }
 
 type consoleState struct {
@@ -6629,7 +6652,29 @@ func consoleErrorLogPath(stateDir string) string {
 }
 
 func mappingControlPath(stateDir, host, id string) string {
+	return filepath.Join(shortRuntimeDir(stateDir), "mapping-"+hash(host+"-"+id)+".ctl")
+}
+
+func legacyMappingControlPath(stateDir, host, id string) string {
 	return filepath.Join(stateDir, "mapping-"+hash(host+"-"+id)+".ctl")
+}
+
+func mappingControlPaths(stateDir, host, id string) []string {
+	paths := []string{mappingControlPath(stateDir, host, id)}
+	legacy := legacyMappingControlPath(stateDir, host, id)
+	if legacy != paths[0] {
+		paths = append(paths, legacy)
+	}
+	return paths
+}
+
+func existingMappingControlPath(stateDir, host, id string) (string, bool) {
+	for _, path := range mappingControlPaths(stateDir, host, id) {
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
+	}
+	return "", false
 }
 
 func mappingEndpointPath(stateDir, host, id string) string {
@@ -6833,6 +6878,16 @@ func firstOutputLine(out string) string {
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+func firstUsefulErrorLine(out string) string {
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if isUsefulErrorLine(line) {
 			return line
 		}
 	}

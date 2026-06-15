@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.52 - 2026-06-16
+
+- Changed VM service mapping SSH control sockets to use the short runtime path already used by console tunnels, while still recognizing old state-directory sockets for stop/status compatibility.
+- Improved VM service mapping startup errors so benign readiness records do not hide the actual SSH or relay failure in the TUI status line.
+
 ## 0.2.51 - 2026-05-14
 
 - Changed noVNC console SSH tunnels to use a short runtime control-socket path, include the first SSH stderr line in tunnel startup errors, and append failed tunnel diagnostics to a per-run `console-errors.log` in the VMRelay state directory.
