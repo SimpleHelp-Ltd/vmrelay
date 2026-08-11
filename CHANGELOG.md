@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.53 - 2026-08-11
+
+- Added automatic remote watchdog cleanup for VM service mapping relays whose SSH tunnel backend disappears.
+- Added remote bridge-port listener diagnostics and an in-TUI conflict confirmation flow that identifies stale/active VMRelay relays or unrelated processes, safely cleans up an authorized listener, and retries the requested mapping automatically.
+
 ## 0.2.52 - 2026-06-16
 
 - Changed VM service mapping SSH control sockets to use the short runtime path already used by console tunnels, while still recognizing old state-directory sockets for stop/status compatibility.

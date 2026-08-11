@@ -7,8 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -1330,6 +1333,286 @@ func TestErrorSummarySkipsMappingReadiness(t *testing.T) {
 	want := "Mapping start failed: exit status 1: Failed to listen on 192.168.122.1:8081: Address already in use"
 	if got != want {
 		t.Fatalf("errorSummary = %q, want %q", got, want)
+	}
+}
+
+func TestParseMappingConflictClassifiesStaleVMRelayRelay(t *testing.T) {
+	out := strings.Join([]string{
+		"VMRELAY_CONFLICT_PRESENT\t1",
+		"VMRELAY_CONFLICT_BIND_HOST\t192.168.122.1",
+		"VMRELAY_CONFLICT_PORT\t8080",
+		"VMRELAY_CONFLICT_PID\t3148538",
+		"VMRELAY_CONFLICT_START\t123456",
+		"VMRELAY_CONFLICT_OWNER_PID\t3148538",
+		"VMRELAY_CONFLICT_OWNER_START\t123456",
+		"VMRELAY_CONFLICT_USER\tsimplehelp",
+		"VMRELAY_CONFLICT_ELAPSED\t88-06:20:00",
+		"VMRELAY_CONFLICT_COMMAND\t/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:48315",
+		"VMRELAY_CONFLICT_LOG\t/tmp/vmrelay-map-deadbeef.log",
+		"VMRELAY_CONFLICT_VMRELAY\tyes",
+		"VMRELAY_CONFLICT_BACKEND_PORT\t48315",
+		"VMRELAY_CONFLICT_BACKEND_LISTENING\tno",
+	}, "\n")
+	conflict, err := parseMappingConflict(out)
+	if err != nil {
+		t.Fatalf("parseMappingConflict returned error: %v", err)
+	}
+	if conflict == nil {
+		t.Fatal("expected a mapping conflict")
+	}
+	if !conflict.VMRelay || conflict.BackendListening || conflict.BackendPort != 48315 {
+		t.Fatalf("unexpected stale VMRelay classification: %#v", conflict)
+	}
+	if conflict.PID != 3148538 || conflict.User != "simplehelp" || conflict.endpoint() != "192.168.122.1:8080" {
+		t.Fatalf("unexpected listener identity: %#v", conflict)
+	}
+	errText := (&mappingConflictError{Mapping: PortMapping{Name: "HTTP"}, Conflict: *conflict}).Error()
+	for _, want := range []string{"stale VMRelay relay", "PID 3148538", "127.0.0.1:48315", "unavailable"} {
+		if !strings.Contains(errText, want) {
+			t.Fatalf("conflict error missing %q: %s", want, errText)
+		}
+	}
+}
+
+func TestParseMappingConflictNone(t *testing.T) {
+	conflict, err := parseMappingConflict("VMRELAY_CONFLICT_NONE\t192.168.122.1\t8080\n")
+	if err != nil || conflict != nil {
+		t.Fatalf("parseMappingConflict = %#v, %v; want nil, nil", conflict, err)
+	}
+}
+
+func TestMappingConflictInspectionFindsExactLinuxListener(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("remote mapping listener inspection targets Linux hosts")
+	}
+	if _, err := exec.LookPath("ss"); err != nil {
+		t.Skip("ss is not available")
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	cmd := exec.Command("bash", "-c", mappingConflictInspectionScript("127.0.0.1", port))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("listener inspection failed: %v\n%s", err, out)
+	}
+	conflict, err := parseMappingConflict(string(out))
+	if err != nil {
+		t.Fatalf("parseMappingConflict failed: %v\n%s", err, out)
+	}
+	if conflict == nil || conflict.PID != os.Getpid() || conflict.Port != port {
+		t.Fatalf("inspection did not identify the test listener: conflict=%#v pid=%d output=%s", conflict, os.Getpid(), out)
+	}
+	if conflict.VMRelay {
+		t.Fatalf("ordinary Go test listener should not be classified as VMRelay: %#v", conflict)
+	}
+}
+
+func TestParseMappingConflictSanitizesTerminalControls(t *testing.T) {
+	out := "VMRELAY_CONFLICT_PRESENT\t1\n" +
+		"VMRELAY_CONFLICT_BIND_HOST\t192.168.122.1\n" +
+		"VMRELAY_CONFLICT_PORT\t8080\n" +
+		"VMRELAY_CONFLICT_PID\t42\n" +
+		"VMRELAY_CONFLICT_COMMAND\tbad\x1b[2Jcommand\n"
+	conflict, err := parseMappingConflict(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsRune(conflict.Command, '\x1b') {
+		t.Fatalf("terminal escape was not sanitized: %q", conflict.Command)
+	}
+}
+
+func TestMappingConflictOpensConfirmationAndCanCancel(t *testing.T) {
+	mapping := PortMapping{ID: "http", Host: "iron", Name: "HTTP", LocalPort: 8080, RemotePort: 8080}
+	conflict := mappingConflict{
+		BindHost:         "192.168.122.1",
+		Port:             8080,
+		PID:              3148538,
+		User:             "simplehelp",
+		Elapsed:          "88 days",
+		Command:          "/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:48315",
+		VMRelay:          true,
+		BackendPort:      48315,
+		BackendListening: false,
+	}
+	m := Model{
+		config:     Config{Theme: "Classic"},
+		activeHost: Host{Name: "iron", Target: "simplehelp@iron.simplehelp.io"},
+		mode:       modeBusy,
+		priorMode:  modeVMs,
+	}
+	updated, cmd := m.updateResult(resultMsg{op: "mapping-start", err: &mappingConflictError{Mapping: mapping, Conflict: conflict}})
+	if cmd != nil {
+		t.Fatal("opening a conflict confirmation should not immediately run cleanup")
+	}
+	next := updated.(Model)
+	if next.mode != modeMappingConflictConfirm || next.promptMapping.ID != mapping.ID {
+		t.Fatalf("unexpected conflict state: mode=%v mapping=%#v", next.mode, next.promptMapping)
+	}
+	view := stripANSI(next.viewMappingConflictConfirm(100, 24))
+	for _, want := range []string{"Port Already In Use", "Stale VMRelay mapping relay", "PID 3148538", "backend is gone", "retries the mapping automatically"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("conflict confirmation missing %q:\n%s", want, view)
+		}
+	}
+	updated, cmd = next.updateMappingConflictConfirmKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if cmd != nil {
+		t.Fatal("cancelling cleanup should not run a command")
+	}
+	cancelled := updated.(Model)
+	if cancelled.mode != modeVMs || !strings.Contains(cancelled.status, "unchanged") {
+		t.Fatalf("unexpected cancelled state: mode=%v status=%q", cancelled.mode, cancelled.status)
+	}
+}
+
+func TestMappingConflictConfirmationAuthorizesCleanupAndRetry(t *testing.T) {
+	m := Model{
+		config:          Config{Theme: "Classic"},
+		stateDir:        t.TempDir(),
+		activeHost:      Host{Name: "iron", Target: "invalid.example"},
+		mode:            modeMappingConflictConfirm,
+		promptMapping:   PortMapping{ID: "http", Host: "iron", Name: "HTTP", LocalPort: 8080, RemotePort: 8080},
+		mappingConflict: mappingConflict{BindHost: "192.168.122.1", Port: 8080, PID: 42},
+	}
+	updated, cmd := m.updateMappingConflictConfirmKey(tea.KeyMsg{Type: tea.KeyEnter})
+	next := updated.(Model)
+	if next.mode != modeBusy || next.priorMode != modeVMs || cmd == nil {
+		t.Fatalf("authorization should enter busy cleanup/retry state: mode=%v prior=%v cmd=%v", next.mode, next.priorMode, cmd)
+	}
+}
+
+func TestMappingRemoteScriptsAreSyntacticallyValidAndSelfHealing(t *testing.T) {
+	host := Host{Name: "iron", Target: "simplehelp@iron.simplehelp.io"}
+	mapping := PortMapping{ID: "http", Host: "iron", Name: "HTTP", LocalPort: 8080, RemotePort: 8080}
+	conflict := mappingConflict{
+		BindHost:         "192.168.122.1",
+		Port:             8080,
+		PID:              3148538,
+		ProcessStartTime: "123456",
+		OwnerPID:         3148538,
+		OwnerStartTime:   "123456",
+		VMRelay:          true,
+		LogPath:          "/tmp/vmrelay-map-deadbeef.log",
+	}
+	scripts := map[string]string{
+		"inspect": mappingConflictInspectionScript(conflict.BindHost, conflict.Port),
+		"cleanup": mappingConflictCleanupScript(conflict),
+		"relay":   remoteMappingRelayScript(host, mapping, conflict.BindHost, 48315),
+	}
+	for name, script := range scripts {
+		path := filepath.Join(t.TempDir(), name+".sh")
+		if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("bash", "-n", path).CombinedOutput(); err != nil {
+			t.Fatalf("%s script has invalid shell syntax: %v\n%s\n%s", name, err, out, script)
+		}
+	}
+	relayScript := scripts["relay"]
+	for _, want := range []string{
+		"vmrelay-mapping-watch",
+		"missing=$((missing + 1))",
+		`[ "$missing" -ge 3 ]`,
+		"SSH tunnel backend 127.0.0.1:$tunnel_port disappeared",
+		`touch "$pidfile" "$relay_pidfile"`,
+	} {
+		if !strings.Contains(relayScript, want) {
+			t.Fatalf("relay watchdog script missing %q:\n%s", want, relayScript)
+		}
+	}
+	cleanupScript := scripts["cleanup"]
+	for _, want := range []string{
+		"changed from PID $expected_pid",
+		"PID $current_pid was reused after inspection",
+		"The listener on $bind_addr:$vm_port did not stop",
+	} {
+		if !strings.Contains(cleanupScript, want) {
+			t.Fatalf("cleanup safety script missing %q:\n%s", want, cleanupScript)
+		}
+	}
+}
+
+func TestMappingRelayWatchdogIntegration(t *testing.T) {
+	if os.Getenv("VMRELAY_RUN_MAPPING_WATCHDOG_TEST") != "1" {
+		t.Skip("set VMRELAY_RUN_MAPPING_WATCHDOG_TEST=1 to exercise detached Linux relay cleanup")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("mapping relays run on Linux hosts")
+	}
+	for _, command := range []string{"ss", "systemd-socket-activate", "setsid"} {
+		if _, err := exec.LookPath(command); err != nil {
+			t.Skip(command + " is not available")
+		}
+	}
+	if _, err := os.Stat("/usr/lib/systemd/systemd-socket-proxyd"); err != nil {
+		if _, fallbackErr := os.Stat("/lib/systemd/systemd-socket-proxyd"); fallbackErr != nil {
+			t.Skip("systemd-socket-proxyd is not available")
+		}
+	}
+
+	backend, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tunnelPort := backend.Addr().(*net.TCPAddr).Port
+	portProbe, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		backend.Close()
+		t.Fatal(err)
+	}
+	bridgePort := portProbe.Addr().(*net.TCPAddr).Port
+	portProbe.Close()
+
+	host := Host{Name: "watchdog-integration"}
+	mapping := PortMapping{ID: "watchdog-integration", Name: "Watchdog", RemotePort: bridgePort}
+	relayID := hash(host.Name + "-" + mapping.ID)
+	pidfile := "/tmp/vmrelay-map-" + relayID + ".pid"
+	relayPIDFile := "/tmp/vmrelay-map-" + relayID + ".relay.pid"
+	logPath := "/tmp/vmrelay-map-" + relayID + ".log"
+	defer func() {
+		for _, path := range []string{relayPIDFile, pidfile} {
+			if data, readErr := os.ReadFile(path); readErr == nil {
+				_ = exec.Command("kill", strings.TrimSpace(string(data))).Run()
+			}
+		}
+		_ = backend.Close()
+		for _, path := range []string{pidfile, relayPIDFile, logPath} {
+			_ = os.Remove(path)
+		}
+	}()
+
+	if out, err := exec.Command("bash", "-c", remoteMappingRelayScript(host, mapping, "127.0.0.1", tunnelPort)).CombinedOutput(); err != nil {
+		t.Fatalf("relay launch failed: %v\n%s", err, out)
+	}
+	waitForListener := func(wantListening bool, timeout time.Duration) bool {
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			conn, dialErr := net.DialTimeout("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(bridgePort)), 100*time.Millisecond)
+			listening := dialErr == nil
+			if conn != nil {
+				_ = conn.Close()
+			}
+			if listening == wantListening {
+				return true
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		return false
+	}
+	if !waitForListener(true, 3*time.Second) {
+		logData, _ := os.ReadFile(logPath)
+		t.Fatalf("relay did not listen on port %d:\n%s", bridgePort, logData)
+	}
+	if err := backend.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !waitForListener(false, 20*time.Second) {
+		logData, _ := os.ReadFile(logPath)
+		t.Fatalf("watchdog did not remove relay after backend port %d closed:\n%s", tunnelPort, logData)
 	}
 }
 

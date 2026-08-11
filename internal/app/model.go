@@ -81,6 +81,50 @@ type PortMapping struct {
 	RemotePort int    `json:"remote_port"`
 }
 
+type mappingConflict struct {
+	BindHost         string
+	Port             int
+	PID              int
+	ProcessStartTime string
+	OwnerPID         int
+	OwnerStartTime   string
+	User             string
+	Elapsed          string
+	Command          string
+	Unit             string
+	LogPath          string
+	VMRelay          bool
+	BackendPort      int
+	BackendListening bool
+}
+
+func (c mappingConflict) endpoint() string {
+	return net.JoinHostPort(c.BindHost, strconv.Itoa(c.Port))
+}
+
+type mappingConflictError struct {
+	Mapping  PortMapping
+	Conflict mappingConflict
+}
+
+func (e *mappingConflictError) Error() string {
+	c := e.Conflict
+	if c.VMRelay {
+		if c.BackendPort > 0 && !c.BackendListening {
+			return fmt.Sprintf("stale VMRelay relay PID %d is listening on %s; backend 127.0.0.1:%d is unavailable", c.PID, c.endpoint(), c.BackendPort)
+		}
+		return fmt.Sprintf("another VMRelay relay PID %d is listening on %s", c.PID, c.endpoint())
+	}
+	if c.PID > 0 {
+		owner := strings.TrimSpace(c.User)
+		if owner != "" {
+			owner = " owned by " + owner
+		}
+		return fmt.Sprintf("process PID %d%s is listening on %s", c.PID, owner, c.endpoint())
+	}
+	return "an unidentified process is listening on " + c.endpoint()
+}
+
 type mode int
 
 const (
@@ -103,6 +147,7 @@ const (
 	modeChangeVMMemory
 	modeHostSetupPrompt
 	modeDeleteHostConfirm
+	modeMappingConflictConfirm
 	modeTheme
 	modeUpdate
 	modeBusy
@@ -206,6 +251,8 @@ type Model struct {
 	setupExit         bool
 	setupHost         Host
 	promptHost        Host
+	promptMapping     PortMapping
+	mappingConflict   mappingConflict
 	vmRefreshInFlight bool
 	pendingLaunches   map[string]time.Time
 	pendingShutdowns  map[string]time.Time
@@ -519,6 +566,8 @@ func (m Model) View() string {
 		b.WriteString(m.viewHostSetupPrompt(innerW, contentH))
 	case modeDeleteHostConfirm:
 		b.WriteString(m.viewDeleteHostConfirm(innerW, contentH))
+	case modeMappingConflictConfirm:
+		b.WriteString(m.viewMappingConflictConfirm(innerW, contentH))
 	case modeTheme:
 		b.WriteString(m.viewThemes(innerW, contentH))
 	case modeUpdate:
@@ -548,7 +597,7 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.help = !m.help
 		return m, nil
 	}
-	if msg.String() == "m" && m.mode != modeAddHost && m.mode != modeAddMapping && m.mode != modeCreateVM && m.mode != modeImportVBox && m.mode != modeISOPicker && m.mode != modeImportSourcePicker && m.mode != modeAddDisk && m.mode != modeImportDisk && m.mode != modeAddNIC && m.mode != modeDuplicateVM && m.mode != modeRenameVM && m.mode != modeDeleteVMConfirm && m.mode != modeChangeVMCPUs && m.mode != modeChangeVMMemory && m.mode != modeHostSetupPrompt && m.mode != modeDeleteHostConfirm && m.mode != modeBusy && m.mode != modeTheme {
+	if msg.String() == "m" && m.mode != modeAddHost && m.mode != modeAddMapping && m.mode != modeCreateVM && m.mode != modeImportVBox && m.mode != modeISOPicker && m.mode != modeImportSourcePicker && m.mode != modeAddDisk && m.mode != modeImportDisk && m.mode != modeAddNIC && m.mode != modeDuplicateVM && m.mode != modeRenameVM && m.mode != modeDeleteVMConfirm && m.mode != modeChangeVMCPUs && m.mode != modeChangeVMMemory && m.mode != modeHostSetupPrompt && m.mode != modeDeleteHostConfirm && m.mode != modeMappingConflictConfirm && m.mode != modeBusy && m.mode != modeTheme {
 		m.themeBack = m.mode
 		m.themeCursor = max(0, themeIndex(m.config.Theme))
 		m.mode = modeTheme
@@ -594,6 +643,8 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateHostSetupPromptKey(msg)
 	case modeDeleteHostConfirm:
 		return m.updateDeleteHostConfirmKey(msg)
+	case modeMappingConflictConfirm:
+		return m.updateMappingConflictConfirmKey(msg)
 	case modeTheme:
 		return m.updateThemeKey(msg)
 	case modeUpdate:
@@ -753,6 +804,38 @@ func (m Model) updateDeleteHostConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = "Cancelled removing host " + m.promptHost.Name + "."
 		m.errText = ""
 		m.promptHost = Host{}
+	}
+	return m, nil
+}
+
+func (m Model) updateMappingConflictConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter", "y":
+		if m.mappingConflict.PID <= 0 {
+			m.errText = "VMRelay could not identify a process ID, so it cannot safely clean up this listener."
+			return m, nil
+		}
+		host := m.activeHost
+		mapping := m.promptMapping
+		conflict := m.mappingConflict
+		return m.busy(modeVMs, "Cleaning up the port conflict and starting "+mapping.Name+"...", "mapping-cleanup-retry", func() resultMsg {
+			cleanupOut, cleanupErr := cleanupRemoteMappingConflict(host, conflict)
+			if cleanupErr != nil {
+				return resultMsg{op: "mapping-cleanup-retry", output: cleanupOut, err: cleanupErr}
+			}
+			startOut, startErr := startPortMapping(host, mapping, m.stateDir)
+			output := strings.TrimSpace(startOut)
+			if startErr == nil {
+				output = strings.TrimSpace(output + "\n" + strings.TrimSpace(cleanupOut))
+			}
+			return resultMsg{op: "mapping-cleanup-retry", output: output, err: startErr}
+		})
+	case "n", "esc":
+		m.mode = modeVMs
+		m.status = "Left the existing listener on " + m.mappingConflict.endpoint() + " unchanged."
+		m.errText = ""
+		m.promptMapping = PortMapping{}
+		m.mappingConflict = mappingConflict{}
 	}
 	return m, nil
 }
@@ -2208,6 +2291,17 @@ func (m Model) updateResult(msg resultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.mode = m.priorMode
 	if msg.err != nil {
+		if msg.op == "mapping-start" || msg.op == "mapping-cleanup-retry" {
+			var conflictErr *mappingConflictError
+			if errors.As(msg.err, &conflictErr) {
+				m.mode = modeMappingConflictConfirm
+				m.promptMapping = conflictErr.Mapping
+				m.mappingConflict = conflictErr.Conflict
+				m.status = conflictErr.Error()
+				m.errText = ""
+				return m, nil
+			}
+		}
 		if msg.op == "shutdown" {
 			m.clearSelectedShutdownPending()
 		}
@@ -2311,10 +2405,14 @@ func (m Model) updateResult(msg resultMsg) (tea.Model, tea.Cmd) {
 			m.status = msg.op + " complete."
 		}
 		return m.loadVMDetail(m.activeHost, m.vmDetail.VM)
-	case "mapping-start", "mapping-stop":
+	case "mapping-start", "mapping-stop", "mapping-cleanup-retry":
 		m.status = strings.TrimSpace(msg.output)
 		if m.status == "" {
 			m.status = msg.op + " complete."
+		}
+		if msg.op == "mapping-cleanup-retry" {
+			m.promptMapping = PortMapping{}
+			m.mappingConflict = mappingConflict{}
 		}
 	default:
 		m.status = strings.TrimSpace(msg.output)
@@ -2350,6 +2448,8 @@ func failureText(msg resultMsg, m Model) string {
 		return "Mapping start failed: " + msg.err.Error()
 	case "mapping-stop":
 		return "Mapping stop failed: " + msg.err.Error()
+	case "mapping-cleanup-retry":
+		return "Mapping conflict cleanup failed: " + msg.err.Error()
 	case "vm-create":
 		return "VM creation failed: " + msg.err.Error()
 	case "vbox-import":
@@ -3443,6 +3543,55 @@ func (m Model) viewDeleteVMConfirm(width, height int) string {
 	return m.styles().pane.Width(max(56, width-4)).Height(max(3, height-2)).Render(fitLines(body, width-6, height-4))
 }
 
+func (m Model) viewMappingConflictConfirm(width, height int) string {
+	conflict := m.mappingConflict
+	kind := "Non-VMRelay process"
+	recommendation := "This listener was not identified as VMRelay. Only stop it if you know the service can be interrupted."
+	if conflict.VMRelay {
+		kind = "Another VMRelay mapping relay"
+		if conflict.BackendPort > 0 && !conflict.BackendListening {
+			kind = "Stale VMRelay mapping relay"
+			recommendation = "Its SSH tunnel backend is gone, so the relay cannot serve traffic. Cleanup is recommended."
+		} else {
+			recommendation = "Its SSH tunnel backend is still live. Another VMRelay user may be using this mapping."
+		}
+	} else if conflict.Unit != "" {
+		kind = "Systemd service " + conflict.Unit
+		recommendation = "This is not a VMRelay relay. Confirming will stop the systemd service now; leave it unchanged if that service is needed."
+	}
+
+	listener := "PID unavailable"
+	if conflict.PID > 0 {
+		listener = fmt.Sprintf("PID %d", conflict.PID)
+	}
+	if conflict.User != "" {
+		listener += " owned by " + conflict.User
+	}
+	if conflict.Elapsed != "" {
+		listener += " (running " + conflict.Elapsed + ")"
+	}
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("Port Already In Use\n\nMapping:  %s\nAddress:  %s\nType:     %s\nListener: %s\n", m.promptMapping.Name, conflict.endpoint(), kind, listener))
+	if conflict.Command != "" {
+		details.WriteString("Command:  " + conflict.Command + "\n")
+	}
+	if conflict.BackendPort > 0 {
+		state := "not listening (stale)"
+		if conflict.BackendListening {
+			state = "listening (active)"
+		}
+		details.WriteString(fmt.Sprintf("Backend: 127.0.0.1:%d — %s\n", conflict.BackendPort, state))
+	}
+	details.WriteString("\n" + recommendation + "\n\n")
+	if conflict.PID > 0 {
+		details.WriteString("Enter/y cleans up this listener and then retries the mapping automatically.\n")
+	} else {
+		details.WriteString("VMRelay cannot safely clean this up without an identifiable PID.\n")
+	}
+	details.WriteString("N or Esc leaves it unchanged.")
+	return m.styles().pane.Width(max(62, width-4)).Height(max(3, height-2)).Render(fitLines(details.String(), width-6, height-4))
+}
+
 func (m Model) viewChangeVMCPUs(width, height int) string {
 	valueW := max(8, width-20)
 	current := valueOr(m.vmDetail.CPUs, "unknown")
@@ -3567,6 +3716,8 @@ func (m Model) helpText() string {
 			return "enter/y: run setup  n/esc: skip  q: quit"
 		case modeDeleteHostConfirm:
 			return "enter/y: remove host  n/esc: cancel  q: quit"
+		case modeMappingConflictConfirm:
+			return "enter/y: clean up and retry  n/esc: leave unchanged  q: quit"
 		case modeTheme:
 			return "up/down: browse themes  enter: select  esc/b: back  q: quit"
 		case modeUpdate:
@@ -6377,6 +6528,13 @@ func startPortMapping(h Host, mapping PortMapping, stateDir string) (string, err
 		}
 		bindHost = addr
 	}
+	conflict, inspectOut, inspectErr := inspectRemoteMappingListener(h, bindHost, mapping.RemotePort)
+	if inspectErr != nil {
+		return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut) + "\n" + strings.TrimSpace(inspectOut)), fmt.Errorf("could not inspect VM bridge port %s: %w", net.JoinHostPort(bindHost, strconv.Itoa(mapping.RemotePort)), inspectErr)
+	}
+	if conflict != nil {
+		return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut)), &mappingConflictError{Mapping: mapping, Conflict: *conflict}
+	}
 	ctl := mappingControlPath(stateDir, h.Name, mapping.ID)
 	if err := os.MkdirAll(filepath.Dir(ctl), 0o700); err != nil {
 		return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut)), err
@@ -6406,6 +6564,9 @@ func startPortMapping(h Host, mapping PortMapping, stateDir string) (string, err
 		_, _ = runCommand(10*time.Second, "ssh", "-S", ctl, "-O", "exit", h.Target)
 		_ = os.Remove(ctl)
 		_ = os.Remove(filepath.Dir(ctl))
+		if conflict, _, inspectErr := inspectRemoteMappingListener(h, bindHost, mapping.RemotePort); inspectErr == nil && conflict != nil {
+			return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut) + "\n" + strings.TrimSpace(relayOut)), &mappingConflictError{Mapping: mapping, Conflict: *conflict}
+		}
 		detail := firstUsefulErrorLine(relayOut)
 		if detail != "" {
 			return strings.TrimSpace(strings.TrimSpace(prepareOut) + "\n" + strings.TrimSpace(bridgeOut) + "\n" + strings.TrimSpace(relayOut)), fmt.Errorf("failed to start VM service mapping relay: %w: %s", relayErr, detail)
@@ -6414,6 +6575,316 @@ func startPortMapping(h Host, mapping PortMapping, stateDir string) (string, err
 	}
 	writeMappingEndpointHost(stateDir, h.Name, mapping.ID, bindHost)
 	return fmt.Sprintf("Started %s: VMs use %s:%d -> this machine 127.0.0.1:%d.", mapping.Name, bindHost, mapping.RemotePort, mapping.LocalPort), nil
+}
+
+func inspectRemoteMappingListener(h Host, bindHost string, port int) (*mappingConflict, string, error) {
+	out, err := ssh(h.Target, mappingConflictInspectionScript(bindHost, port), 15*time.Second)
+	if err != nil {
+		return nil, out, err
+	}
+	conflict, parseErr := parseMappingConflict(out)
+	if parseErr != nil {
+		return nil, out, parseErr
+	}
+	return conflict, out, nil
+}
+
+func mappingConflictInspectionScript(bindHost string, port int) string {
+	return fmt.Sprintf(`
+set -u
+bind_addr=%s
+vm_port=%d
+
+socket_line() {
+  ss -H -ltnp "sport = :$vm_port" 2>/dev/null | awk -v endpoint="$bind_addr:$vm_port" '$4 == endpoint { print; exit }'
+}
+
+line="$(socket_line || true)"
+pid="$(printf '%%s\n' "$line" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
+if [ -z "$line" ]; then
+  printf 'VMRELAY_CONFLICT_NONE\t%%s\t%%s\n' "$bind_addr" "$vm_port"
+  exit 0
+fi
+if [ -z "$pid" ] && sudo -n true >/dev/null 2>&1; then
+  line="$(sudo -n ss -H -ltnp "sport = :$vm_port" 2>/dev/null | awk -v endpoint="$bind_addr:$vm_port" '$4 == endpoint { print; exit }')"
+  pid="$(printf '%%s\n' "$line" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
+fi
+
+clean_value() {
+  printf '%%s' "$1" | tr '\t\r\n' '   '
+}
+emit() {
+  key="$1"
+  value="$(clean_value "$2")"
+  printf 'VMRELAY_CONFLICT_%%s\t%%s\n' "$key" "$value"
+}
+process_start() {
+  proc="$1"
+  [ -r "/proc/$proc/stat" ] || return 0
+  sed 's/.*) //' "/proc/$proc/stat" 2>/dev/null | awk '{ print $20; exit }'
+}
+process_cmd() {
+  proc="$1"
+  [ -r "/proc/$proc/cmdline" ] || return 0
+  tr '\0' ' ' <"/proc/$proc/cmdline" 2>/dev/null
+}
+
+emit PRESENT 1
+emit BIND_HOST "$bind_addr"
+emit PORT "$vm_port"
+emit SOCKET "$line"
+if [ -z "$pid" ]; then
+  emit PID 0
+  exit 0
+fi
+
+user="$(ps -o user= -p "$pid" 2>/dev/null | awk '{$1=$1; print}')"
+elapsed="$(ps -o etime= -p "$pid" 2>/dev/null | awk '{$1=$1; print}')"
+command="$(process_cmd "$pid")"
+start="$(process_start "$pid")"
+unit="$(sed -n 's|.*/\([^/]*\.service\)$|\1|p' "/proc/$pid/cgroup" 2>/dev/null | sed -n '1p')"
+log_path=""
+for fd in 1 2; do
+  candidate="$(readlink "/proc/$pid/fd/$fd" 2>/dev/null || true)"
+  case "$candidate" in
+    /tmp/vmrelay-map-*.log*) log_path="$candidate"; break ;;
+  esac
+done
+
+owner_pid="$pid"
+owner_start="$start"
+vmrelay=no
+ancestor="$pid"
+depth=0
+while [ "$depth" -lt 3 ]; do
+  ancestor_cmd="$(process_cmd "$ancestor")"
+  case "$ancestor_cmd" in
+    *vmrelay-mapping-watch*)
+      vmrelay=yes
+      owner_pid="$ancestor"
+      owner_start="$(process_start "$ancestor")"
+      break
+      ;;
+  esac
+  parent="$(ps -o ppid= -p "$ancestor" 2>/dev/null | awk '{$1=$1; print}')"
+  case "$parent" in ''|0|1) break ;; esac
+  ancestor="$parent"
+  depth=$((depth + 1))
+done
+case "$log_path" in /tmp/vmrelay-map-*.log*) vmrelay=yes ;; esac
+for marker in /tmp/vmrelay-map-*.pid; do
+  [ -e "$marker" ] || continue
+  recorded="$(cat "$marker" 2>/dev/null || true)"
+  if [ "$recorded" = "$pid" ] || [ "$recorded" = "$owner_pid" ]; then
+    vmrelay=yes
+    owner_pid="$recorded"
+    owner_start="$(process_start "$recorded")"
+    break
+  fi
+done
+
+backend_port="$(printf '%%s\n' "$command" | sed -n 's/.*127\.0\.0\.1:\([0-9][0-9]*\).*/\1/p')"
+case "$backend_port" in
+  ''|*[!0-9]*) backend_port="" ;;
+  *)
+    if [ "$backend_port" -lt %d ] || [ "$backend_port" -ge %d ]; then
+      backend_port=""
+    fi
+    ;;
+esac
+backend_listening=no
+if [ -n "$backend_port" ] && ss -H -ltn "sport = :$backend_port" 2>/dev/null | awk -v endpoint="127.0.0.1:$backend_port" '$4 == endpoint { found=1 } END { exit !found }'; then
+  backend_listening=yes
+fi
+
+emit PID "$pid"
+emit START "$start"
+emit OWNER_PID "$owner_pid"
+emit OWNER_START "$owner_start"
+emit USER "$user"
+emit ELAPSED "$elapsed"
+emit COMMAND "$command"
+emit UNIT "$unit"
+emit LOG "$log_path"
+emit VMRELAY "$vmrelay"
+emit BACKEND_PORT "$backend_port"
+emit BACKEND_LISTENING "$backend_listening"
+`, shellQuote(bindHost), port, mappingRelayPortBase, mappingRelayPortBase+mappingRelayPortSpan)
+}
+
+func parseMappingConflict(out string) (*mappingConflict, error) {
+	values := make(map[string]string)
+	for _, line := range strings.Split(out, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if !ok || !strings.HasPrefix(key, "VMRELAY_CONFLICT_") {
+			continue
+		}
+		values[strings.TrimPrefix(key, "VMRELAY_CONFLICT_")] = safeRemoteDisplayValue(strings.TrimSpace(value))
+	}
+	if _, ok := values["NONE"]; ok {
+		return nil, nil
+	}
+	if values["PRESENT"] != "1" {
+		return nil, fmt.Errorf("remote listener inspection returned no structured result")
+	}
+	if values["BIND_HOST"] == "" {
+		return nil, fmt.Errorf("remote listener inspection returned no bind address")
+	}
+	port, err := strconv.Atoi(values["PORT"])
+	if err != nil || port < 1 || port > 65535 {
+		return nil, fmt.Errorf("remote listener inspection returned invalid port %q", values["PORT"])
+	}
+	parseOptionalInt := func(key string) int {
+		value, _ := strconv.Atoi(values[key])
+		return value
+	}
+	return &mappingConflict{
+		BindHost:         values["BIND_HOST"],
+		Port:             port,
+		PID:              parseOptionalInt("PID"),
+		ProcessStartTime: values["START"],
+		OwnerPID:         parseOptionalInt("OWNER_PID"),
+		OwnerStartTime:   values["OWNER_START"],
+		User:             values["USER"],
+		Elapsed:          values["ELAPSED"],
+		Command:          values["COMMAND"],
+		Unit:             values["UNIT"],
+		LogPath:          strings.TrimSuffix(values["LOG"], " (deleted)"),
+		VMRelay:          values["VMRELAY"] == "yes",
+		BackendPort:      parseOptionalInt("BACKEND_PORT"),
+		BackendListening: values["BACKEND_LISTENING"] == "yes",
+	}, nil
+}
+
+func safeRemoteDisplayValue(value string) string {
+	value = strings.ToValidUTF8(value, "�")
+	value = strings.Map(func(r rune) rune {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return ' '
+		}
+		return r
+	}, value)
+	runes := []rune(value)
+	if len(runes) > 2048 {
+		return string(runes[:2048]) + "…"
+	}
+	return value
+}
+
+func cleanupRemoteMappingConflict(h Host, conflict mappingConflict) (string, error) {
+	if conflict.PID <= 0 {
+		return "", fmt.Errorf("cannot safely clean up %s without a process ID", conflict.endpoint())
+	}
+	out, err := ssh(h.Target, mappingConflictCleanupScript(conflict), 20*time.Second)
+	if err != nil {
+		detail := firstUsefulErrorLine(out)
+		if detail != "" {
+			return out, fmt.Errorf("failed to clean up listener on %s: %w: %s", conflict.endpoint(), err, detail)
+		}
+		return out, fmt.Errorf("failed to clean up listener on %s: %w", conflict.endpoint(), err)
+	}
+	return out, nil
+}
+
+func mappingConflictCleanupScript(conflict mappingConflict) string {
+	vmrelay := "no"
+	if conflict.VMRelay {
+		vmrelay = "yes"
+	}
+	return fmt.Sprintf(`
+set -u
+bind_addr=%s
+vm_port=%d
+expected_pid=%d
+expected_start=%s
+owner_pid=%d
+owner_start=%s
+vmrelay=%s
+unit=%s
+log_path=%s
+
+socket_line() {
+  line="$(ss -H -ltnp "sport = :$vm_port" 2>/dev/null | awk -v endpoint="$bind_addr:$vm_port" '$4 == endpoint { print; exit }')"
+  pid="$(printf '%%s\n' "$line" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
+  if [ -n "$line" ] && [ -z "$pid" ] && sudo -n true >/dev/null 2>&1; then
+    line="$(sudo -n ss -H -ltnp "sport = :$vm_port" 2>/dev/null | awk -v endpoint="$bind_addr:$vm_port" '$4 == endpoint { print; exit }')"
+  fi
+  printf '%%s' "$line"
+}
+process_start() {
+  proc="$1"
+  [ -r "/proc/$proc/stat" ] || return 0
+  sed 's/.*) //' "/proc/$proc/stat" 2>/dev/null | awk '{ print $20; exit }'
+}
+terminate_pid() {
+  target="$1"
+  [ -n "$target" ] || return 0
+  kill -0 "$target" 2>/dev/null || return 0
+  if command -v pgrep >/dev/null 2>&1; then
+    for child in $(pgrep -P "$target" 2>/dev/null || true); do
+      kill "$child" 2>/dev/null || sudo -n kill "$child" 2>/dev/null || true
+    done
+  fi
+  kill "$target" 2>/dev/null || sudo -n kill "$target" 2>/dev/null
+}
+
+line="$(socket_line)"
+if [ -z "$line" ]; then
+  echo "Listener on $bind_addr:$vm_port is already gone."
+  exit 0
+fi
+current_pid="$(printf '%%s\n' "$line" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
+if [ -z "$current_pid" ]; then
+  echo "The listener on $bind_addr:$vm_port is still present, but its PID is unavailable; refusing unsafe cleanup." >&2
+  exit 1
+fi
+if [ "$current_pid" != "$expected_pid" ]; then
+  echo "The listener on $bind_addr:$vm_port changed from PID $expected_pid to PID $current_pid; refusing to stop the new process." >&2
+  exit 1
+fi
+current_start="$(process_start "$current_pid")"
+if [ -n "$expected_start" ] && [ "$current_start" != "$expected_start" ]; then
+  echo "PID $current_pid was reused after inspection; refusing to stop it." >&2
+  exit 1
+fi
+
+if [ "$vmrelay" = no ] && [ -n "$unit" ]; then
+  systemctl stop "$unit" 2>/dev/null || sudo -n systemctl stop "$unit"
+else
+  terminate_pid "$current_pid"
+  if [ "$vmrelay" = yes ] && [ "$owner_pid" -gt 1 ] && [ "$owner_pid" != "$current_pid" ]; then
+    current_owner_start="$(process_start "$owner_pid")"
+    if [ -z "$owner_start" ] || [ "$current_owner_start" = "$owner_start" ]; then
+      terminate_pid "$owner_pid"
+    fi
+  fi
+fi
+
+attempt=0
+while [ "$attempt" -lt 20 ]; do
+  [ -z "$(socket_line)" ] && break
+  sleep 0.1
+  attempt=$((attempt + 1))
+done
+if [ -n "$(socket_line)" ]; then
+  echo "The listener on $bind_addr:$vm_port did not stop." >&2
+  exit 1
+fi
+
+if [ "$vmrelay" = yes ]; then
+  for marker in /tmp/vmrelay-map-*.pid /tmp/vmrelay-map-*.relay.pid; do
+    [ -e "$marker" ] || continue
+    recorded="$(cat "$marker" 2>/dev/null || true)"
+    if [ "$recorded" = "$expected_pid" ] || [ "$recorded" = "$owner_pid" ]; then
+      rm -f "$marker" 2>/dev/null || sudo -n rm -f "$marker" 2>/dev/null || true
+    fi
+  done
+  case "$log_path" in
+    /tmp/vmrelay-map-*.log) rm -f "$log_path" 2>/dev/null || sudo -n rm -f "$log_path" 2>/dev/null || true ;;
+  esac
+fi
+echo "Cleared listener PID $expected_pid from $bind_addr:$vm_port."
+`, shellQuote(conflict.BindHost), conflict.Port, conflict.PID, shellQuote(conflict.ProcessStartTime), conflict.OwnerPID, shellQuote(conflict.OwnerStartTime), shellQuote(vmrelay), shellQuote(conflict.Unit), shellQuote(conflict.LogPath))
 }
 
 func prepareVMServiceMappingHost(h Host) (string, error) {
@@ -6470,50 +6941,112 @@ printf 'VM service mapping host setup: ready (%%s)\n' "$relay_tool"
 }
 
 func startRemoteMappingRelay(h Host, mapping PortMapping, bindHost string, tunnelPort int) (string, error) {
+	return ssh(h.Target, remoteMappingRelayScript(h, mapping, bindHost, tunnelPort), 20*time.Second)
+}
+
+func remoteMappingRelayScript(h Host, mapping PortMapping, bindHost string, tunnelPort int) string {
 	relayID := hash(h.Name + "-" + mapping.ID)
-	script := fmt.Sprintf(`
+	return fmt.Sprintf(`
 set -euo pipefail
 bridge_addr=%s
 vm_port=%d
 tunnel_port=%d
 relay_id=%s
 pidfile="/tmp/vmrelay-map-${relay_id}.pid"
+relay_pidfile="/tmp/vmrelay-map-${relay_id}.relay.pid"
 log="/tmp/vmrelay-map-${relay_id}.log"
 if [ -r "$pidfile" ]; then
   old_pid="$(cat "$pidfile" 2>/dev/null || true)"
   if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
     command -v pkill >/dev/null 2>&1 && pkill -P "$old_pid" 2>/dev/null || true
     kill "$old_pid" 2>/dev/null || true
-    sleep 0.3
+    sleep 1
     kill -0 "$old_pid" 2>/dev/null && kill -9 "$old_pid" 2>/dev/null || true
   fi
 fi
-rm -f "$pidfile"
+if [ -r "$relay_pidfile" ]; then
+  old_relay_pid="$(cat "$relay_pidfile" 2>/dev/null || true)"
+  if [ -n "$old_relay_pid" ] && kill -0 "$old_relay_pid" 2>/dev/null; then
+    command -v pkill >/dev/null 2>&1 && pkill -P "$old_relay_pid" 2>/dev/null || true
+    kill "$old_relay_pid" 2>/dev/null || true
+  fi
+fi
+rm -f "$pidfile" "$relay_pidfile"
 socket_activate="$(command -v systemd-socket-activate 2>/dev/null || true)"
 proxyd="$(command -v systemd-socket-proxyd 2>/dev/null || true)"
 if [ -z "$proxyd" ] && [ -x /usr/lib/systemd/systemd-socket-proxyd ]; then proxyd=/usr/lib/systemd/systemd-socket-proxyd; fi
 if [ -z "$proxyd" ] && [ -x /lib/systemd/systemd-socket-proxyd ]; then proxyd=/lib/systemd/systemd-socket-proxyd; fi
 if [ -n "$socket_activate" ] && [ -n "$proxyd" ]; then
-  nohup "$socket_activate" --listen="${bridge_addr}:${vm_port}" "$proxyd" "127.0.0.1:${tunnel_port}" >"$log" 2>&1 &
   relay_tool=systemd-socket-proxyd
 elif command -v socat >/dev/null 2>&1; then
-  nohup socat "TCP-LISTEN:${vm_port},bind=${bridge_addr},reuseaddr,fork" "TCP:127.0.0.1:${tunnel_port}" >"$log" 2>&1 &
   relay_tool=socat
 else
   echo "VM service mappings need systemd-socket-proxyd or socat on the remote host." >&2
   exit 1
 fi
-pid="$!"
-printf '%%s\n' "$pid" >"$pidfile"
+
+watch_script='
+relay_tool="$1"
+socket_activate="$2"
+proxyd="$3"
+bridge_addr="$4"
+vm_port="$5"
+tunnel_port="$6"
+pidfile="$7"
+relay_pidfile="$8"
+relay_pid=""
+cleanup() {
+  trap - EXIT TERM INT
+  if [ -n "$relay_pid" ] && kill -0 "$relay_pid" 2>/dev/null; then
+    command -v pkill >/dev/null 2>&1 && pkill -P "$relay_pid" 2>/dev/null || true
+    kill "$relay_pid" 2>/dev/null || true
+  fi
+  rm -f "$relay_pidfile"
+  if [ "$(cat "$pidfile" 2>/dev/null || true)" = "$$" ]; then rm -f "$pidfile"; fi
+}
+trap cleanup EXIT TERM INT
+printf "%%s\n" "$$" >"$pidfile"
+if [ "$relay_tool" = systemd-socket-proxyd ]; then
+  "$socket_activate" --listen="${bridge_addr}:${vm_port}" "$proxyd" "127.0.0.1:${tunnel_port}" &
+else
+  socat "TCP-LISTEN:${vm_port},bind=${bridge_addr},reuseaddr,fork" "TCP:127.0.0.1:${tunnel_port}" &
+fi
+relay_pid="$!"
+printf "%%s\n" "$relay_pid" >"$relay_pidfile"
+missing=0
+while kill -0 "$relay_pid" 2>/dev/null; do
+  sleep 5
+  touch "$pidfile" "$relay_pidfile" 2>/dev/null || true
+  if ! command -v ss >/dev/null 2>&1; then
+    continue
+  fi
+  if ss -H -ltn "sport = :$tunnel_port" 2>/dev/null | awk -v endpoint="127.0.0.1:$tunnel_port" '\''$4 == endpoint { found=1 } END { exit !found }'\''; then
+    missing=0
+  else
+    missing=$((missing + 1))
+  fi
+  if [ "$missing" -ge 3 ]; then
+    echo "VMRelay watchdog: SSH tunnel backend 127.0.0.1:$tunnel_port disappeared; stopping relay on $bridge_addr:$vm_port."
+    exit 0
+  fi
+done
+wait "$relay_pid" 2>/dev/null || true
+'
+if command -v setsid >/dev/null 2>&1; then
+  nohup setsid sh -c "$watch_script" vmrelay-mapping-watch "$relay_tool" "$socket_activate" "$proxyd" "$bridge_addr" "$vm_port" "$tunnel_port" "$pidfile" "$relay_pidfile" >"$log" 2>&1 &
+else
+  nohup sh -c "$watch_script" vmrelay-mapping-watch "$relay_tool" "$socket_activate" "$proxyd" "$bridge_addr" "$vm_port" "$tunnel_port" "$pidfile" "$relay_pidfile" >"$log" 2>&1 &
+fi
 sleep 0.5
-if ! kill -0 "$pid" 2>/dev/null; then
+pid="$(cat "$pidfile" 2>/dev/null || true)"
+relay_pid="$(cat "$relay_pidfile" 2>/dev/null || true)"
+if [ -z "$pid" ] || [ -z "$relay_pid" ] || ! kill -0 "$pid" 2>/dev/null || ! kill -0 "$relay_pid" 2>/dev/null; then
   cat "$log" >&2 2>/dev/null || true
-  rm -f "$pidfile"
+  rm -f "$pidfile" "$relay_pidfile"
   exit 1
 fi
-printf 'VMRELAY_RELAY	%%s	%%s:%%s	127.0.0.1:%%s\n' "$relay_tool" "$bridge_addr" "$vm_port" "$tunnel_port"
+printf 'VMRELAY_RELAY	%%s	%%s:%%s	127.0.0.1:%%s	watchdog=%%s\n' "$relay_tool" "$bridge_addr" "$vm_port" "$tunnel_port" "$pid"
 `, shellQuote(bindHost), mapping.RemotePort, tunnelPort, shellQuote(relayID))
-	return ssh(h.Target, script, 20*time.Second)
 }
 
 func stopPortMapping(h Host, mapping PortMapping, stateDir string) (string, error) {
@@ -6545,17 +7078,23 @@ func stopRemoteMappingRelay(h Host, mapping PortMapping) (string, error) {
 set -u
 relay_id=%s
 pidfile="/tmp/vmrelay-map-${relay_id}.pid"
-if [ ! -r "$pidfile" ]; then
+relay_pidfile="/tmp/vmrelay-map-${relay_id}.relay.pid"
+if [ ! -r "$pidfile" ] && [ ! -r "$relay_pidfile" ]; then
   exit 0
+fi
+relay_pid="$(cat "$relay_pidfile" 2>/dev/null || true)"
+if [ -n "$relay_pid" ] && kill -0 "$relay_pid" 2>/dev/null; then
+  command -v pkill >/dev/null 2>&1 && pkill -P "$relay_pid" 2>/dev/null || true
+  kill "$relay_pid" 2>/dev/null || true
 fi
 pid="$(cat "$pidfile" 2>/dev/null || true)"
 if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
   command -v pkill >/dev/null 2>&1 && pkill -P "$pid" 2>/dev/null || true
   kill "$pid" 2>/dev/null || true
-  sleep 0.3
+  sleep 1
   kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
 fi
-rm -f "$pidfile"
+rm -f "$pidfile" "$relay_pidfile"
 `, shellQuote(relayID))
 	return ssh(h.Target, script, 10*time.Second)
 }
