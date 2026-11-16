@@ -1,14 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.2.54 - 2026-11-16
+
+- Build release binaries with the current Go 1.27.4 toolchain and refresh its licence/patent notices.
 
 - Refresh the README with prominent SimpleHelp guide/download links, installation prerequisites and the distinction between current source and the published 0.2.53 binary.
 
-- Point help and documentation to simple-help.com/tools/vmrelay; prepare update checks and in-app installation to use tools.simplehelp.io directly.
+- Point help and documentation to simple-help.com/tools/vmrelay; use update checks and in-app installation to use tools.simplehelp.io directly.
 
 - Host unchanged VMRelay 0.2.53 macOS/Linux archives, checksums, pinned-checksum installer and update metadata on tools.simplehelp.io; update the documented install command. Existing binaries retain their GitHub update path until the migration release.
 
-- Applied Apache-2.0 to the current original source/documentation with SimpleHelp attribution, source licence headers, and licence/attribution/dependency notices in future release archives; existing releases remain unchanged.
+- Applied Apache-2.0 to the current original source/documentation with SimpleHelp attribution, source licence headers, and licence/attribution/dependency notices in release archives; existing releases remain unchanged.
 - Reviewed reachable Git history, tracked files and public release inputs; detailed review records remain local.
 
 ## 0.2.53 - 2026-08-11

@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-version="0.2.53"
+version="0.2.54"
 base_url="https://tools.simplehelp.io/vmrelay/$version"
 install_dir="${VMRELAY_INSTALL_DIR:-/usr/local/bin}"
 
@@ -24,10 +24,10 @@ esac
 asset="vmrelay_${os}_${arch}.tar.gz"
 url="$base_url/$asset"
 case "$os/$arch" in
-  darwin/amd64) expected_sha256="87490766b9672d4443d1df3368254d048d2e223b64771a439400cde39dac8c9f" ;;
-  darwin/arm64) expected_sha256="2d4a10c8b5eba8012284a0e010bdfb655f9d31e6e4c248d16ffec1616ff66286" ;;
-  linux/amd64) expected_sha256="9f7246c00037daca133f8e5625334e9e8b7511d14a2a2e196f26f246212c8d23" ;;
-  linux/arm64) expected_sha256="e713f4ee7eb46a3c71fd9ca404ee23d145fca139ddb92bafa0217b24bf9ce346" ;;
+  darwin/amd64) expected_sha256="93338d87fd135141b2a4db3e75af2ac6e7aa4393c1933102dffdf548c5b0adf5" ;;
+  darwin/arm64) expected_sha256="5d0b8403e399a28090f0efb3990caadd91fb5ee0407f6bce8aa580df6e4a990b" ;;
+  linux/amd64) expected_sha256="1f26518346f48b192d5c818a298625c7d6bfd72653b17d962f34f15af98498f3" ;;
+  linux/arm64) expected_sha256="281e3286042ad690c2b00f48e8b1b0530b003b0e23f02f8ca5ec10534bd6f43e" ;;
 esac
 
 if command -v sha256sum >/dev/null 2>&1; then

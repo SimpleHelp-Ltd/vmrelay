@@ -20,7 +20,7 @@ curl -fsSL https://tools.simplehelp.io/vmrelay/install.sh | bash
 
 The installer downloads versioned archives from `tools.simplehelp.io` and checks their pinned SHA-256 before installation.
 
-The current published release is **0.2.53**. The installer still installs that release. This checkout prepares update checks via `https://tools.simplehelp.io/vmrelay/latest.json` and installation via the tools host; a new binary release is required to deliver that change. Published 0.2.53 binaries still use the previous GitHub update path. Updates and host setup both leave the TUI and restore the terminal first, so local or remote `sudo` prompts work normally.
+The current release is **0.2.54**. Update checks use `https://tools.simplehelp.io/vmrelay/latest.json`, and installation uses the tools host. Older 0.2.53 installations can discover this migration release through their existing GitHub update path. Updates and host setup both leave the TUI and restore the terminal first, so local or remote `sudo` prompts work normally.
 
 The workstation needs SSH and a browser. The remote host needs Linux with KVM support and SSH access; Ubuntu/Debian host setup requires administrator privileges. macOS and Linux installers support amd64 and arm64.
 

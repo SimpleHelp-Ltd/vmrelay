@@ -35,10 +35,9 @@ the existing `tag_name` and `html_url` fields. Its initial value identifies
 0.2.53 and `https://simple-help.com/tools/vmrelay`.
 
 Installed 0.2.53 binaries still check GitHub and run the GitHub-hosted
-installer. Hosting the files alone does not change them. The prepared
-migration source changes both the update-check endpoint and the install
-command to tools.simplehelp.io. Publish that release through the existing
-GitHub update path as well, so older installations can discover it.
+installer. Hosting the files alone does not change them. Release 0.2.54 changes both the update-check endpoint and the install
+command to tools.simplehelp.io. It is also published through the existing
+GitHub update path, so older installations can discover it.
 
 ## Publication ordering
 
@@ -68,7 +67,7 @@ agent-sudo binary or grant change is needed for this hosting work.
 
 The former `/agent-sudo.html` product page now forwards to the new guide.
 Version 1.0.3 prints that historical URL in terminal handoffs and
-help; the prepared source now points to `https://simple-help.com/tools/agent-sudo`.
+help; release 1.0.4 points to `https://simple-help.com/tools/agent-sudo`.
 Existing installed binaries retain the historical URL until a new release
 is installed. Do not change frozen release artifacts to alter it.
 The forwarding source is `../agent-sudo/website/agent-sudo-redirect.html`.
