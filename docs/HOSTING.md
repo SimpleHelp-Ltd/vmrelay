@@ -89,3 +89,33 @@ local installer fixtures. Go tests/vet and agent-sudo tests/clippy passed.
 The forwarding page was independently verified as exact HTML content, and
 the existing agent-sudo installer and five release downloads retained their
 hashes. No new binary release was made during hosting migration.
+
+## 0.2.54 release — 2026-11-16
+
+Version 0.2.54 ships the tools-host updater and SimpleHelp guide links. Each
+macOS/Linux amd64/arm64 archive contains LICENSE, NOTICE and
+THIRD_PARTY_NOTICES.txt. Binaries were built with Go 1.27.4, whose downloaded
+toolchain archive was verified against the official SHA-256. Go tests/vet,
+four archive/licence inspections, nine installer platform/failure fixtures
+and a secret scan of the release commit passed.
+
+All versioned public files were anonymously downloaded and verified before
+the pinned bootstrap update. The actual public bootstrap installed the exact
+Linux amd64 0.2.54 release binary into an isolated writable directory without
+sudo; help points to the public SimpleHelp guide.
+
+| Path below `/vmrelay/0.2.54/` | SHA-256 |
+| --- | --- |
+| `vmrelay_darwin_amd64.tar.gz` | `93338d87fd135141b2a4db3e75af2ac6e7aa4393c1933102dffdf548c5b0adf5` |
+| `vmrelay_darwin_arm64.tar.gz` | `5d0b8403e399a28090f0efb3990caadd91fb5ee0407f6bce8aa580df6e4a990b` |
+| `vmrelay_linux_amd64.tar.gz` | `1f26518346f48b192d5c818a298625c7d6bfd72653b17d962f34f15af98498f3` |
+| `vmrelay_linux_arm64.tar.gz` | `281e3286042ad690c2b00f48e8b1b0530b003b0e23f02f8ca5ec10534bd6f43e` |
+
+Bootstrap SHA-256: `43c9376cfd0467245111ed23959e2ca6c9bffe92e68d47a1b67b19d6c20bca19`.
+
+The GitHub release mirrors the same five files so installed 0.2.53 clients
+can discover the migration. Older versioned downloads remain unchanged.
+
+The live latest.json identifies v0.2.54 and the SimpleHelp guide. Seven
+sanitized hosting receipts, exact public hashes, GitHub mirror digests and
+installation evidence are preserved in [the release record](releases/0.2.54.json).

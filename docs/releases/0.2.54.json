@@ -1,0 +1,244 @@
+{
+  "date": "2026-11-16",
+  "version": "0.2.54",
+  "release_commit": "56d8e7c",
+  "go_toolchain": "go1.27.4",
+  "tests_and_vet": "passed",
+  "installer_platform_and_failure_fixtures": 9,
+  "archive_license_inspections": 4,
+  "release_commit_secret_scan": "passed",
+  "public_install": {
+    "version": "vmrelay 0.2.54",
+    "bootstrap_sha256": "43c9376cfd0467245111ed23959e2ca6c9bffe92e68d47a1b67b19d6c20bca19",
+    "installed_binary_sha256": "f0de719e97b8985efac627b8c309627659405b50ce5c786ebf2d85e2384d0b92",
+    "exact_released_binary": true,
+    "isolated_writable_destination": true,
+    "sudo_used": false
+  },
+  "tools_host_receipts": [
+    {
+      "service_request_id": "40b8e0fc-f5df-4134-a0bd-6124a345c8f4",
+      "path": "vmrelay/0.2.54/checksums.txt",
+      "service_status": "succeeded",
+      "error": null,
+      "result": {
+        "bytes": 374,
+        "checks": [
+          "Input, path, ownership and source checksum validated; local and remote locks held.",
+          "Atomic installation and local mirror verified.",
+          "Anonymous HTTPS returned 200 with attachment header and matching full checksum and size.",
+          "Parent directories returned 404; landing page and robots unchanged.",
+          "SH live 200, staging 401; Caddy hashes and release pointers/manifests unchanged."
+        ],
+        "is_current": true,
+        "message": "Published exact checksum file bytes and verified the public download.",
+        "next_steps": [],
+        "path": "vmrelay/0.2.54/checksums.txt",
+        "receipt_reference": "services/receipts/tools_publish/66fbefcf1f5ccbf1fd80b348f90855b8257b1be0fe90216dc0d6358ba18feec2",
+        "request_id": "release-vmrelay_0.2.54_checksums.txt-db47ccf0-5471-4d04-ba8a-eec6e73a99b5",
+        "sha256": "baa506d198eab6502ef013d7f1055610e6aec41e1b3f12b9916de28844c4a513",
+        "status": "published",
+        "url": "https://tools.simplehelp.io/vmrelay/0.2.54/checksums.txt"
+      },
+      "public_sha256": "baa506d198eab6502ef013d7f1055610e6aec41e1b3f12b9916de28844c4a513",
+      "bytes": 374
+    },
+    {
+      "service_request_id": "d57f4015-9421-49b6-b9f5-0d1eef8e38b0",
+      "path": "vmrelay/0.2.54/vmrelay_darwin_amd64.tar.gz",
+      "service_status": "succeeded",
+      "error": null,
+      "result": {
+        "bytes": 3542155,
+        "checks": [
+          "Source fetched anonymously over verified TLS; checksum verified; archive never unpacked or executed.",
+          "Local and remote locks, containment, ownership and destination absence verified.",
+          "Anonymous HTTPS 200, attachment header and full download checksum/size verified.",
+          "Parent directories return 404; landing, robots, Caddy hashes and website release pointers/manifests unchanged; live 200 and staging 401.",
+          "Atomic local mirror and private receipts verified."
+        ],
+        "is_current": true,
+        "message": "Published exact bytes atomically and verified the public download.",
+        "next_steps": [],
+        "path": "vmrelay/0.2.54/vmrelay_darwin_amd64.tar.gz",
+        "receipt_reference": "services/receipts/tools_publish/746bbcbf55d3164c71128754bde6f6591f00e3fe3fcf55d19369c349f2099cd6",
+        "request_id": "release-vmrelay_0.2.54_vmrelay_darwin_amd64.tar.gz-a50dabc1-c888-4fc8-86f4-e94f87b48d30",
+        "sha256": "93338d87fd135141b2a4db3e75af2ac6e7aa4393c1933102dffdf548c5b0adf5",
+        "status": "published",
+        "url": "https://tools.simplehelp.io/vmrelay/0.2.54/vmrelay_darwin_amd64.tar.gz"
+      },
+      "public_sha256": "93338d87fd135141b2a4db3e75af2ac6e7aa4393c1933102dffdf548c5b0adf5",
+      "bytes": 3542155
+    },
+    {
+      "service_request_id": "0ae0ae17-5074-4cdc-9b78-21039eb77b0f",
+      "path": "vmrelay/0.2.54/vmrelay_darwin_arm64.tar.gz",
+      "service_status": "succeeded",
+      "error": null,
+      "result": {
+        "bytes": 3256617,
+        "checks": [
+          "Source fetched anonymously over verified TLS with address validation and bounded transfer; archive never unpacked or executed.",
+          "Input, path, ownership and source checksum validated; local and remote locks held.",
+          "Atomic installation and local mirror verified.",
+          "Anonymous HTTPS returned 200 with attachment header and matching full checksum and size.",
+          "Parent directories returned 404; landing page and robots unchanged.",
+          "SH live 200, staging 401; Caddy hashes and release pointers/manifests unchanged."
+        ],
+        "is_current": true,
+        "message": "Published exact release bytes after retrying a source timeout; public download verified.",
+        "next_steps": [],
+        "path": "vmrelay/0.2.54/vmrelay_darwin_arm64.tar.gz",
+        "receipt_reference": "services/receipts/tools_publish/e18e2f6c7af17075901a4cf41816492900c4ccb683a4f1669f0822e10daf4a84",
+        "request_id": "release-vmrelay_0.2.54_vmrelay_darwin_arm64.tar.gz-5a764997-3c12-4100-bb73-cea2ebd8e39e",
+        "sha256": "5d0b8403e399a28090f0efb3990caadd91fb5ee0407f6bce8aa580df6e4a990b",
+        "status": "published",
+        "url": "https://tools.simplehelp.io/vmrelay/0.2.54/vmrelay_darwin_arm64.tar.gz"
+      },
+      "public_sha256": "5d0b8403e399a28090f0efb3990caadd91fb5ee0407f6bce8aa580df6e4a990b",
+      "bytes": 3256617
+    },
+    {
+      "service_request_id": "a8c926af-821c-4b29-913f-9d95491c48bf",
+      "path": "vmrelay/0.2.54/vmrelay_linux_amd64.tar.gz",
+      "service_status": "succeeded",
+      "error": null,
+      "result": {
+        "bytes": 3495848,
+        "checks": [
+          "Source fetched anonymously over verified TLS with address validation and bounded transfer; archive never unpacked or executed.",
+          "Input, path, ownership and source checksum validated; local and remote locks held.",
+          "Atomic installation and local mirror verified.",
+          "Anonymous HTTPS returned 200 with attachment header and matching full checksum and size.",
+          "Parent directories returned 404; landing page and robots unchanged.",
+          "SH live 200, staging 401; Caddy hashes and release pointers/manifests unchanged."
+        ],
+        "is_current": true,
+        "message": "Published exact release bytes and verified the public download.",
+        "next_steps": [],
+        "path": "vmrelay/0.2.54/vmrelay_linux_amd64.tar.gz",
+        "receipt_reference": "services/receipts/tools_publish/fb2d5754b4c07486ca3eeece7316512d98c4e44fb3402d598392e77d0d5663c4",
+        "request_id": "release-vmrelay_0.2.54_vmrelay_linux_amd64.tar.gz-1ddd8037-4183-4c30-a89b-a9f545abb32d",
+        "sha256": "1f26518346f48b192d5c818a298625c7d6bfd72653b17d962f34f15af98498f3",
+        "status": "published",
+        "url": "https://tools.simplehelp.io/vmrelay/0.2.54/vmrelay_linux_amd64.tar.gz"
+      },
+      "public_sha256": "1f26518346f48b192d5c818a298625c7d6bfd72653b17d962f34f15af98498f3",
+      "bytes": 3495848
+    },
+    {
+      "service_request_id": "278ade3b-e147-4711-9ae1-4d3cc221295e",
+      "path": "vmrelay/0.2.54/vmrelay_linux_arm64.tar.gz",
+      "service_status": "succeeded",
+      "error": null,
+      "result": {
+        "bytes": 3147585,
+        "checks": [
+          "Source fetched anonymously over verified TLS with address validation and bounded transfer; archive never unpacked or executed.",
+          "Input, path, ownership and source checksum validated; local and remote locks held.",
+          "Atomic installation and local mirror verified.",
+          "Anonymous HTTPS returned 200 with attachment header and matching full checksum and size.",
+          "Parent directories returned 404; landing page and robots unchanged.",
+          "SH live 200, staging 401; Caddy hashes and release pointers/manifests unchanged."
+        ],
+        "is_current": true,
+        "message": "Published exact release bytes and verified the public download.",
+        "next_steps": [],
+        "path": "vmrelay/0.2.54/vmrelay_linux_arm64.tar.gz",
+        "receipt_reference": "services/receipts/tools_publish/6bcd5c4527d7ec77791ea96ee5a8e8d93425c9635fd0a426bcb92f438ebab2a5",
+        "request_id": "release-vmrelay_0.2.54_vmrelay_linux_arm64.tar.gz-ec15e69e-64c0-4bcc-bc5e-c2e1b14b4037",
+        "sha256": "281e3286042ad690c2b00f48e8b1b0530b003b0e23f02f8ca5ec10534bd6f43e",
+        "status": "published",
+        "url": "https://tools.simplehelp.io/vmrelay/0.2.54/vmrelay_linux_arm64.tar.gz"
+      },
+      "public_sha256": "281e3286042ad690c2b00f48e8b1b0530b003b0e23f02f8ca5ec10534bd6f43e",
+      "bytes": 3147585
+    },
+    {
+      "service_request_id": "f56d5d90-d553-48e1-a99b-766185b1a319",
+      "path": "vmrelay/install.sh",
+      "service_status": "succeeded",
+      "error": null,
+      "result": {
+        "bytes": 1931,
+        "checks": [
+          "All four versioned archives and checksums.txt anonymously downloaded and hash-verified before update.",
+          "Previous checksum matched; atomic replacement completed under local and remote locks with private backup.",
+          "Installer HTTPS returned 200 with matching SHA-256, size and attachment header.",
+          "Local mirror and private publication history updated.",
+          "Parent directory returned 404; landing page, robots.txt and Caddy hashes unchanged.",
+          "SH live returned 200; staging returned 401; release pointers and deployment manifests unchanged."
+        ],
+        "is_current": true,
+        "message": "Updated the VMRelay installer to 0.2.54. Published bytes verified; script was not executed.",
+        "next_steps": [],
+        "path": "vmrelay/install.sh",
+        "previous_sha256": "5b2d3e070177e9f75168500e23c8129542df6d4dd80c3b3a0d3f8bffd12c5643",
+        "receipt_reference": "services/receipts/tools_publish/bfce364ce0cdb400ef7bb27762876f60dc165cc691528384a3f7cb92f23628a7",
+        "request_id": "release-vmrelay_install.sh-ce79e819-7957-46a1-9f7e-09df45589268",
+        "sha256": "43c9376cfd0467245111ed23959e2ca6c9bffe92e68d47a1b67b19d6c20bca19",
+        "status": "updated",
+        "url": "https://tools.simplehelp.io/vmrelay/install.sh"
+      },
+      "public_sha256": "43c9376cfd0467245111ed23959e2ca6c9bffe92e68d47a1b67b19d6c20bca19",
+      "bytes": 1931
+    },
+    {
+      "service_request_id": "8b98cfcc-f9d4-4b8a-8126-326776d9e6b7",
+      "path": "vmrelay/latest.json",
+      "service_status": "succeeded",
+      "error": null,
+      "result": {
+        "bytes": 83,
+        "checks": [
+          "Source checksum and expected previous checksum verified.",
+          "All four 0.2.54 archives, checksums.txt and installer verified via anonymous HTTPS downloads.",
+          "Atomic replacement completed under local and remote locks; private backup retained.",
+          "Public URL returned 200 with matching SHA-256, byte count and attachment header.",
+          "Local mirror updated; private publication history recorded.",
+          "Directory listing unavailable; landing page, robots.txt, Caddy configuration and SH release pointers/manifests unchanged.",
+          "SH live returned 200; anonymous staging returned 401."
+        ],
+        "is_current": true,
+        "message": "Updated latest.json to v0.2.54 after verifying all versioned files and the installer live.",
+        "next_steps": [],
+        "path": "vmrelay/latest.json",
+        "previous_sha256": "9a9c00a768bebd798f604fada363451595b769e52745937a64026115bff71589",
+        "receipt_reference": "services/receipts/tools_publish/fab59973a669956837c5491500a1376964e21b13a14e4cd2dc15ee10f440cce5",
+        "request_id": "release-vmrelay_latest.json-b19fdb43-a4ae-4c14-b36e-5378d1425841",
+        "sha256": "1ddab03eaf59670904795d65e8cf1536ab53b0a6ded8bfd2b763f308e7e0b297",
+        "status": "updated",
+        "url": "https://tools.simplehelp.io/vmrelay/latest.json"
+      },
+      "public_sha256": "1ddab03eaf59670904795d65e8cf1536ab53b0a6ded8bfd2b763f308e7e0b297",
+      "bytes": 83
+    }
+  ],
+  "github_assets": [
+    {
+      "name": "checksums.txt",
+      "sha256": "baa506d198eab6502ef013d7f1055610e6aec41e1b3f12b9916de28844c4a513",
+      "bytes": 374
+    },
+    {
+      "name": "vmrelay_darwin_amd64.tar.gz",
+      "sha256": "93338d87fd135141b2a4db3e75af2ac6e7aa4393c1933102dffdf548c5b0adf5",
+      "bytes": 3542155
+    },
+    {
+      "name": "vmrelay_darwin_arm64.tar.gz",
+      "sha256": "5d0b8403e399a28090f0efb3990caadd91fb5ee0407f6bce8aa580df6e4a990b",
+      "bytes": 3256617
+    },
+    {
+      "name": "vmrelay_linux_amd64.tar.gz",
+      "sha256": "1f26518346f48b192d5c818a298625c7d6bfd72653b17d962f34f15af98498f3",
+      "bytes": 3495848
+    },
+    {
+      "name": "vmrelay_linux_arm64.tar.gz",
+      "sha256": "281e3286042ad690c2b00f48e8b1b0530b003b0e23f02f8ca5ec10534bd6f43e",
+      "bytes": 3147585
+    }
+  ]
+}

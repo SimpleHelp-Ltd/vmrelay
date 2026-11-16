@@ -2,6 +2,8 @@
 
 ## 0.2.54 - 2026-11-16
 
+- Publish and anonymously hash-verify all four tools-hosted archives, checksums, pinned installer and latest metadata. The real public installer installs the exact 0.2.54 binary without sudo in an isolated destination. Mirror the migration release on GitHub for older clients; preserve existing versioned downloads.
+
 - Build release binaries with the current Go 1.27.4 toolchain and refresh its licence/patent notices.
 
 - Refresh the README with prominent SimpleHelp guide/download links, installation prerequisites and the distinction between current source and the published 0.2.53 binary.
