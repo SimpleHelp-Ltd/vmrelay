@@ -116,7 +116,7 @@ func TestUpdatePromptRendersAvailableVersion(t *testing.T) {
 		width:      80,
 		height:     20,
 		mode:       modeUpdate,
-		updateInfo: updateInfo{Latest: "0.2.4", URL: "https://github.com/brontoguana/vmrelay/releases/tag/v0.2.4"},
+		updateInfo: updateInfo{Latest: "0.2.4", URL: "https://simple-help.com/tools/vmrelay"},
 		status:     "Update available: 0.2.4.",
 	}
 	view := stripANSI(m.View())

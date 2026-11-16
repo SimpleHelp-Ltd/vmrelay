@@ -354,8 +354,8 @@ var (
 	defaultHeight = 30
 )
 
-const latestReleaseAPI = "https://api.github.com/repos/brontoguana/vmrelay/releases/latest"
-const installCommand = "curl -fsSL https://raw.githubusercontent.com/brontoguana/vmrelay/main/install.sh | bash"
+const latestReleaseAPI = "https://tools.simplehelp.io/vmrelay/latest.json"
+const installCommand = "curl -fsSL https://tools.simplehelp.io/vmrelay/install.sh | bash"
 
 func InstallCommand() string {
 	return installCommand
@@ -7486,7 +7486,7 @@ func checkForUpdateCmd(current string) tea.Cmd {
 		if err != nil {
 			return updateCheckMsg{err: err}
 		}
-		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "vmrelay/"+current)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

@@ -23,7 +23,7 @@ func main() {
 			fmt.Printf("vmrelay %s\n", version)
 			return
 		case "--help", "-h", "help":
-			fmt.Print("Usage:\n  vmrelay\n  vmrelay --version\n\nVMRelay opens a terminal UI for remote libvirt VM management.\n")
+			fmt.Print("Usage:\n  vmrelay\n  vmrelay --version\n\nVMRelay opens a terminal UI for remote libvirt VM management.\n\nFull guide: https://simple-help.com/tools/vmrelay\n")
 			return
 		default:
 			fmt.Fprintf(os.Stderr, "vmrelay: unsupported argument %q\n\nRun vmrelay with no arguments to open the TUI.\n", arg)

@@ -1,5 +1,7 @@
 # VMRelay
 
+**[VMRelay guide and downloads](https://simple-help.com/tools/vmrelay)** · [All SimpleHelp tools](https://simple-help.com/tools)
+
 ![VMRelay TUI screenshot](screenshot.png)
 
 VMRelay is a terminal UI for managing VMs on a normal remote Linux host. It uses SSH, KVM/libvirt, noVNC, and websockify, but day-to-day use starts with:
@@ -13,15 +15,21 @@ VMs run under system libvirt at `qemu:///system`. VMRelay keeps workstation pref
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/brontoguana/vmrelay/main/install.sh | bash
+curl -fsSL https://tools.simplehelp.io/vmrelay/install.sh | bash
 ```
 
-At startup VMRelay checks for newer GitHub releases. Updates and host setup both leave the TUI and restore the terminal first, so local or remote `sudo` prompts work normally.
+The installer downloads versioned archives from `tools.simplehelp.io` and checks their pinned SHA-256 before installation.
+
+The current published release is **0.2.53**. The installer still installs that release. This checkout prepares update checks via `https://tools.simplehelp.io/vmrelay/latest.json` and installation via the tools host; a new binary release is required to deliver that change. Published 0.2.53 binaries still use the previous GitHub update path. Updates and host setup both leave the TUI and restore the terminal first, so local or remote `sudo` prompts work normally.
+
+The workstation needs SSH and a browser. The remote host needs Linux with KVM support and SSH access; Ubuntu/Debian host setup requires administrator privileges. macOS and Linux installers support amd64 and arm64.
+
+Set `VMRELAY_INSTALL_DIR` to choose a writable installation directory without sudo; the default is `/usr/local/bin`.
 
 ## Quick Start
 
 1. Run `vmrelay`.
-2. Press `a` to add a host, for example `simplehelp@iron.example.com`.
+2. Press `a` to add a host, for example `operator@vmhost.example.com`.
 3. Choose whether to run setup after the host is saved.
 4. Press `t` to test SSH, libvirt, KVM, noVNC, and websockify.
 5. Press `Enter` to open the host.
@@ -116,6 +124,17 @@ Disable automatic browser launch:
 ```bash
 VMRELAY_OPEN_BROWSER=0 vmrelay
 ```
+
+## Build from source
+
+With the Go version required by [go.mod](go.mod) or newer:
+
+```bash
+go build -o vmrelay ./cmd/vmrelay
+./vmrelay --help
+```
+
+See [download hosting](docs/HOSTING.md) for release publication and updater compatibility.
 
 ## Licence
 
