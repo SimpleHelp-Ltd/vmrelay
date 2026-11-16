@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Applied Apache-2.0 to the current original source/documentation with SimpleHelp attribution, source licence headers, and licence/attribution/dependency notices in future release archives; existing releases remain unchanged.
+
 ## 0.2.53 - 2026-08-11
 
 - Added automatic remote watchdog cleanup for VM service mapping relays whose SSH tunnel backend disappears.

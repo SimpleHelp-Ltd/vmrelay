@@ -116,3 +116,10 @@ Disable automatic browser launch:
 ```bash
 VMRELAY_OPEN_BROWSER=0 vmrelay
 ```
+
+## Licence
+
+Copyright 2026 SimpleHelp. The original code and documentation in this checkout
+are licensed under the [Apache License, Version 2.0](LICENSE). Attribution is in
+[NOTICE](NOTICE). [Third-party notices](THIRD_PARTY_NOTICES.txt) preserve dependency
+licences; update them when dependencies or build toolchains change.
